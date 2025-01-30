@@ -1,0 +1,87 @@
+```{r}
+# Task 2: Import Libraries
+library(tidyverse)
+library(readxl)
+library(h2o)
+```
+
+```{r}
+# Task 3: Read the Excel Sheets
+path = "C:/Users/Krishnansh verma/OneDrive/Desktop/Python and ML/Projects/Predictive-Analytics-for-Business-with-H2O-and-R/bank_data.xlsx"
+sheets = excel_sheets(path)
+
+```
+
+
+```{r}
+# Task 3.1: Explore Data in each Sheet
+sheets%>%
+  map(~read_excel(path = path,sheet =.))%>%
+  set_names(sheets)
+
+```
+
+
+```{r}
+# Task 3.2: Join Data by ID Column
+data_joined <- sheets[4:7] %>% #required sheets
+  map(~read_excel(path = path,sheet =.))%>%
+  reduce(left_join)
+
+table(data_joined$TERM_DEPOSIT) #this shows an imbalanced dataset with 39922 as no and only 5289 yes
+```
+
+```{r}
+# Task 4: Start H2O Cluster
+h2o.init() #initializing the cluster
+
+```
+
+```{r}
+# Task 4.1: Data Preparation
+data_joined <- data_joined %>%
+  mutate(across(where(is.character), as.factor)) #selects character columns and factors them(encoding)
+
+train <- as.h2o(data_joined) #storing it as a dataframe
+h2o.describe(train) #enum columns are categorical columns
+y <- "TERM_DEPOSIT" #for multiclassification train[,y]=as.faactor(train[,y])
+x <- setdiff(names(train),c(y,"ID"))
+```
+
+```{r}
+# Task 5: H2O AutoML Training
+models <- h2o.automl(
+  x=x,
+  y=y,
+  training_frame = train,
+  max_runtime_secs = 300, #max_models = 15,
+  balance_classes = TRUE,
+)
+```
+
+```{r}
+# Task 6: View AutoML Leaderboard
+leader_board = models@leaderboard
+print(leader_board,n = nrow(leader_board))
+```
+
+```{r}
+# 6.1 Ensemble Exploration ----
+model_ids = as.data.frame(models@leaderboard$model_id)[,1]
+best_model = h2o.getModel(grep("StackedEnsemble_AllModels",model_ids,value=TRUE)[1])
+metalearner = h2o.getModel(best_model@model$metalearner$name)
+h2o.varimp(metalearner)
+h2o.varimp_plot(metalearner)
+```
+
+```{r}
+# Task 7: Baselearner Variable Importance 
+gbm = h2o.getModel(grep("GBM",model_ids,value=TRUE)[1])
+h2o.varimp(gbm)
+h2o.varimp_plot(gbm)
+
+```
+
+
+
+
